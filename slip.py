@@ -43,6 +43,8 @@ class Enlace:
     def __init__(self, linha_serial):
         self.linha_serial = linha_serial
         self.linha_serial.registrar_recebedor(self.__raw_recv)
+        self.gambiarra = 0
+        self.residue = b''
 
     def registrar_recebedor(self, callback):
         self.callback = callback
@@ -51,7 +53,23 @@ class Enlace:
         # TODO: Preencha aqui com o código para enviar o datagrama pela linha
         # serial, fazendo corretamente a delimitação de quadros e o escape de
         # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
-        pass
+        datagrama = datagrama.replace(b'\xDB', b'\xDB\xDD').replace(b'\xC0', b'\xDB\xDC')
+        self.linha_serial.enviar(b'\xc0' + datagrama + b'\xc0')
+
+
+    def parse_line(self, dados):
+        out = []
+        
+        dados = self.residue + dados
+        self.residue = b'' 
+        print('parse_lines: dados = ', dados)
+        while dados.find(b'\xc0') != -1: 
+            out.append(dados.split(b'\xc0', 1)[0])
+            dados = dados.split(b'\xc0', 1)[1]
+        
+        if len(dados) > 0:
+            self.residue = dados
+        return out
 
     def __raw_recv(self, dados):
         # TODO: Preencha aqui com o código para receber dados da linha serial.
@@ -60,5 +78,23 @@ class Enlace:
         # superior chamando self.callback. Cuidado pois o argumento dados pode
         # vir quebrado de várias formas diferentes - por exemplo, podem vir
         # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
-        # pedaço de outro, ou vários quadros de uma vez só.
-        pass
+        # pedaço de outro, ou vários quadros de uma vez só
+        lines = self.parse_line(dados)
+        for line in lines:
+            data = line.split(b'\xc0')[0]
+            if data.find(b'\xdb\xdc') != -1:
+                data = data.replace(b'\xdb\xdc', b'\xc0')
+            if data.find(b'\xdb\xdd') != -1:
+                data = data.replace(b'\xdb\xdd', b'\xdb')
+            if data != b'':
+                try:
+                    self.callback(data)
+                except:
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    lines = b''
+        
+    
+
+        
